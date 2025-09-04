@@ -6,18 +6,10 @@
     <title>Muckraker Field Report</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithCustomToken, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        // --- Firebase Globals (MANDATORY) ---
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-        
-        let db;
-        let auth;
-        let userId;
+        // This is a local version that does not require an internet connection or a server.
+        // Data is stored temporarily in the browser and will be lost if the page is closed.
+
+        let studentData = {};
 
         // Problem data as per the source documents
         const fieldSites = {
@@ -172,24 +164,8 @@
         };
 
         document.addEventListener('DOMContentLoaded', async () => {
-            const app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
-            
-            try {
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(auth);
-                }
-                userId = auth.currentUser.uid;
-                document.getElementById('user-id-display').innerText = `User ID: ${userId}`;
-                loadNotes();
-
-            } catch (error) {
-                console.error("Firebase Auth Error:", error);
-                document.getElementById('user-id-display').innerText = `Auth failed. Error: ${error.code}`;
-            }
+            const userIdDisplay = document.getElementById('user-id-display');
+            userIdDisplay.innerText = "This is a local version, no internet connection is needed to run.";
 
             const mainContent = document.getElementById('main-content');
             const nav = document.getElementById('site-nav');
@@ -198,32 +174,12 @@
             const fieldSitesView = document.getElementById('field-sites-view');
             const processingForm = document.getElementById('processing-form');
 
-            let studentData = {};
+            // Load saved data from localStorage if available
+            studentData = JSON.parse(localStorage.getItem('muckrakerNotes')) || {};
 
-            const docRef = doc(db, `artifacts/${appId}/users/${userId}/muckraker-notes`, 'current-notes');
-
-            function loadNotes() {
-                onSnapshot(docRef, (docSnap) => {
-                    if (docSnap.exists()) {
-                        studentData = docSnap.data().notes || {};
-                        console.log("Notes loaded from Firestore.");
-                        updateReportForm();
-                    } else {
-                        console.log("No notes found in Firestore, starting fresh.");
-                        studentData = {};
-                    }
-                }, (error) => {
-                    console.error("Error loading notes: ", error);
-                });
-            }
-
-            async function saveNotes() {
-                try {
-                    await setDoc(docRef, { notes: studentData }, { merge: true });
-                    console.log("Notes saved to Firestore!");
-                } catch (e) {
-                    console.error("Error saving notes: ", e);
-                }
+            function saveNotes() {
+                localStorage.setItem('muckrakerNotes', JSON.stringify(studentData));
+                console.log("Notes saved to local storage!");
             }
 
             function renderFieldSites() {
@@ -310,7 +266,7 @@
                         problemSection.className = 'border-t pt-4 mt-4';
                         problemSection.innerHTML = `
                             <h4 class="text-lg font-bold mb-2 text-gray-800">${problem.title}</h4>
-                            <textarea name="report-paragraph-${problem.id}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" rows="6" placeholder="Write your newspaper paragraph here, using vivid language and at least three pieces of information from your notes.">${studentData[problem.id]}</textarea>
+                            <textarea name="report-paragraph-${problem.id}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" rows="6" placeholder="Write your newspaper paragraph here, using vivid language and at least three pieces of information from your notes.">${studentData[problemId]}</textarea>
                         `;
                         problemsContainer.appendChild(problemSection);
                     }
