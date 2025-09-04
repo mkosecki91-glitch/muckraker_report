@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Muckraker Field Report</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // --- Firebase Globals (MANDATORY) ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        let db;
+        let auth;
+        let userId;
+
+        // Problem data as per the source documents
+        const fieldSites = {
+            "cities-workplaces": {
+                name: "Problems in Cities and Workplaces",
+                problems: [
+                    {
+                        id: "slum-life",
+                        title: "Slum Life",
+                        visual: 'https://placehold.co/400x300/e2e8f0/1a202c?text=Jacob+Riis+Photo',
+                        quote: "That short hacking cough, that tiny, helpless wail—what do they mean? . . . Oh! a sadly familiar story—before the day is at an end. The child is dying with measles. . . . That dark bedroom killed it.",
+                        info: [
+                            "As many as 300,000 people were crowded into one square mile in the Lower East Side.",
+                            "Urban infrastructure was inadequate, with a lack of roads, sewage, and fire protection.",
+                            "Waste often ended up on the streets due to a lack of indoor plumbing in poorer neighborhoods.",
+                            "Contagious diseases like tuberculosis and pneumonia spread quickly through crowded slums."
+                        ]
+                    },
+                    {
+                        id: "unsafe-products",
+                        title: "Unsafe Products: Buyer Beware",
+                        visual: 'https://placehold.co/400x300/e2e8f0/1a202c?text=Upton+Sinclair+The+Jungle',
+                        quote: "There would be meat stored in great piles in rooms; and the water from leaky roofs would drip over it, and thousands of rats would race about on it.",
+                        info: [
+                            "The government did not regulate product quality, so dangerous ingredients were used in food and medicine.",
+                            "Meat was often processed in unsanitary conditions, with rats and droppings contaminating it.",
+                            "Common medicines like cough syrup contained dangerous narcotics such as morphine and opium.",
+                            "Monopolies were stifling competition and driving small companies out of business."
+                        ]
+                    }
+                ]
+            },
+            "environment": {
+                name: "Problems in the Environment",
+                problems: [
+                    {
+                        id: "landscape",
+                        title: "The Changing Landscape",
+                        visual: 'https://placehold.co/400x300/e2e8f0/1a202c?text=Forest+Clearing+Photo',
+                        quote: "Many of nature’s five hundred kinds of wild trees had to make way for orchards and cornfields. . . . trees in their beauty fell crashing by millions, smashed to confusion.",
+                        info: [
+                            "Entire forests were cut down for farming and logging, with only a fraction of the country’s original forests remaining by 1900.",
+                            "The government encouraged logging by selling large plots of land in the Northwest.",
+                            "Ranching led to overgrazing, which stripped the land of vegetation and left it vulnerable to erosion.",
+                            "Overgrazing also disrupted natural wildlife and left them with not enough to eat."
+                        ]
+                    },
+                    {
+                        id: "natural-resources",
+                        title: "Extracting Natural Resources",
+                        visual: 'https://placehold.co/400x300/e2e8f0/1a202c?text=Coal+Mine+Photo',
+                        quote: "A mighty gnashing sound filled the ears. With terrible appetite this huge and hideous monster sat imperturbably munching coal...",
+                        info: [
+                            "Extractive industries used explosives and drilling equipment, leaving stripped land and polluted streams.",
+                            "Mining was a dangerous industry, with workers at risk of being buried alive or contracting black-lung disease.",
+                            "Oil drilling left the earth torn up in search of 'black gold.'",
+                            "The government imposed no environmental regulations, allowing destructive practices to go unhindered."
+                        ]
+                    },
+                    {
+                        id: "pollution",
+                        title: "Pollution",
+                        visual: 'https://placehold.co/400x300/e2e8f0/1a202c?text=Pittsburgh+Steel+Photo',
+                        quote: "One of the striking features of our neighborhood was the presence of huge wooden garbage boxes fastened to the street pavement in which the undisturbed refuse accumulated day by day.",
+                        info: [
+                            "Factories released so much smoke that it was hard to see and breathe in cities.",
+                            "Cities had a foul stench from animal waste that was left on the streets.",
+                            "Water was severely polluted as household sewage and industrial waste were dumped into nearby sources.",
+                            "Engineers in some cities had to reverse the flow of rivers to prevent contamination of drinking water."
+                        ]
+                    }
+                ]
+            },
+            "politics": {
+                name: "Problems in Politics",
+                problems: [
+                    {
+                        id: "political-machines",
+                        title: "Political Machines and Bosses",
+                        visual: 'https://placehold.co/400x300/e2e8f0/1a202c?text=Tammany+Hall+Cartoon',
+                        quote: "I know what Parks is doing,' said a New York union workman, 'but what do I care. He has raised my wages. Let him have his graft!'" ,
+                        info: [
+                            "Political machines were groups of politicians who worked to gain and maintain political power, money, and influence.",
+                            "Bosses did favors for the poor, especially immigrants, in exchange for votes.",
+                            "The most famous political boss was William 'Boss' Tweed of New York's Tammany Hall machine, who cheated the city out of as much as $200 million.",
+                            "Machines rigged local elections with fake votes to maintain their control on cities."
+                        ]
+                    },
+                    {
+                        id: "national-politics",
+                        title: "Corruption on a National Level",
+                        visual: 'https://placehold.co/400x300/e2e8f0/1a202c?text=Bosses+of+the+Senate',
+                        quote: "The Senators are not elected by the people; they are elected by the 'interests'...",
+                        info: [
+                            "Corporations bribed state legislators to elect their favored candidates to the Senate, which became known as the 'Millionaires Club'.",
+                            "Big businesses gave campaign contributions in exchange for passing legislation that favored industry.",
+                            "Politicians engaged in patronage, giving jobs to friends and supporters who were often unqualified.",
+                            "The Pendleton Act of 1883 was passed to limit patronage by establishing guidelines for hiring civil service employees."
+                        ]
+                    }
+                ]
+            },
+            "society": {
+                name: "Problems in Society",
+                problems: [
+                    {
+                        id: "social-class",
+                        title: "Growing Differences Between Social Classes",
+                        visual: 'https://placehold.co/400x300/e2e8f0/1a202c?text=Rich+vs+Poor',
+                        quote: "The world's workers have always been and still are the world's slaves. They have borne all the burdens of the race and built all the monuments...",
+                        info: [
+                            "The wealth gap between the rich and the poor widened significantly, with a small percentage of Americans becoming fabulously wealthy.",
+                            "The working class swelled with the arrival of immigrants, and many found it difficult to get ahead as wages did not keep up with the cost of living.",
+                            "Poor people often took in lodgers to share the cost of rent.",
+                            "The American middle class expanded as a result of rising productivity."
+                        ]
+                    },
+                    {
+                        id: "racial-injustice",
+                        title: "Racial Injustice",
+                        visual: 'https://placehold.co/400x300/e2e8f0/1a202c?text=Colored+Only+Sign',
+                        quote: "Nowhere in the civilized world save the United States of America do men, possessing all civil and political power, go out in bands of 50 and 5,000 to hunt down, shoot, hang or burn to death a single individual...",
+                        info: [
+                            "Jim Crow laws segregated Black people from White people in nearly every area of public life in the South.",
+                            "African Americans were kept from voting by poll taxes, literacy tests, and 'grandfather clauses'.",
+                            "Violence against Black people, especially lynchings, was common.",
+                            "Many African Americans fled the South in search of a better life in Northern cities."
+                        ]
+                    },
+                    {
+                        id: "families",
+                        title: "Challenges for the American Family",
+                        visual: 'https://placehold.co/400x300/e2e8f0/1a202c?text=Child+Labor+Photo',
+                        quote: "Boys twelve years of age may be legally employed in the mines of West Virginia, by day or by night, and for as many hours as the employers care to make them toil or their bodies will stand the strain.",
+                        info: [
+                            "Roughly one out of every five children between ages 10 and 15 was a wage worker.",
+                            "Many children worked long hours in factories, sweatshops, and mines instead of attending school.",
+                            "The temperance movement gained popularity in an effort to improve lives for families by banning alcohol.",
+                            "Parents worried that city life and new entertainments would corrupt their children."
+                        ]
+                    }
+                ]
+            }
+        };
+
+        const vocabulary = {
+            "extractive industry": "Businesses that remove mineral resources from the earth, such as mining and oil drilling.",
+            "Pendleton Act": "A law passed in 1883 that created a federal civil service, limiting patronage and basing government jobs on merit.",
+            "Tammany Hall": "The name of the political machine in New York City, led by William 'Boss' Tweed, known for its corruption.",
+            "temperance movement": "A social movement dedicated to promoting moderation or complete abstinence from alcohol.",
+            "The Jungle": "An investigative novel by Upton Sinclair that exposed the unsanitary conditions of the meatpacking industry."
+        };
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            
+            try {
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                userId = auth.currentUser.uid;
+                document.getElementById('user-id-display').innerText = `User ID: ${userId}`;
+                loadNotes();
+
+            } catch (error) {
+                console.error("Firebase Auth Error:", error);
+                document.getElementById('user-id-display').innerText = `Auth failed. Error: ${error.code}`;
+            }
+
+            const mainContent = document.getElementById('main-content');
+            const nav = document.getElementById('site-nav');
+            const reportView = document.getElementById('report-view');
+            const vocabularyView = document.getElementById('vocabulary-view');
+            const fieldSitesView = document.getElementById('field-sites-view');
+            const processingForm = document.getElementById('processing-form');
+
+            let studentData = {};
+
+            const docRef = doc(db, `artifacts/${appId}/users/${userId}/muckraker-notes`, 'current-notes');
+
+            function loadNotes() {
+                onSnapshot(docRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        studentData = docSnap.data().notes || {};
+                        console.log("Notes loaded from Firestore.");
+                        updateReportForm();
+                    } else {
+                        console.log("No notes found in Firestore, starting fresh.");
+                        studentData = {};
+                    }
+                }, (error) => {
+                    console.error("Error loading notes: ", error);
+                });
+            }
+
+            async function saveNotes() {
+                try {
+                    await setDoc(docRef, { notes: studentData }, { merge: true });
+                    console.log("Notes saved to Firestore!");
+                } catch (e) {
+                    console.error("Error saving notes: ", e);
+                }
+            }
+
+            function renderFieldSites() {
+                nav.innerHTML = '';
+                mainContent.innerHTML = '';
+                reportView.style.display = 'none';
+                vocabularyView.style.display = 'none';
+                fieldSitesView.style.display = 'block';
+
+                Object.keys(fieldSites).forEach(siteKey => {
+                    const site = fieldSites[siteKey];
+                    const siteElement = document.createElement('div');
+                    siteElement.className = 'p-6 rounded-lg shadow-lg bg-white mb-6';
+                    siteElement.innerHTML = `<h2 class="text-2xl font-bold mb-4 text-gray-800">${site.name}</h2>`;
+
+                    site.problems.forEach(problem => {
+                        siteElement.innerHTML += `
+                            <div class="problem-card border border-gray-200 p-4 rounded-md mb-4">
+                                <h3 class="text-xl font-semibold mb-2">${problem.title}</h3>
+                                <div class="flex flex-col md:flex-row gap-4 mb-4">
+                                    <div class="md:w-1/3 flex flex-col items-center">
+                                        <img src="${problem.visual}" alt="${problem.title} visual" class="rounded-md shadow-md mb-2 w-full h-auto">
+                                        <p class="italic text-center text-sm text-gray-600">Primary source visual reference</p>
+                                    </div>
+                                    <div class="md:w-2/3">
+                                        <p class="text-gray-700 italic mb-4">"${problem.quote}"</p>
+                                        <div class="mb-4">
+                                            <h4 class="font-bold mb-2">Reading Notes:</h4>
+                                            <ul class="list-disc list-inside text-sm text-gray-600 space-y-1">
+                                                ${problem.info.map(i => `<li>${i}</li>`).join('')}
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mt-4">
+                                    <h4 class="font-bold text-lg mb-2">My Muckraking Notepad</h4>
+                                    <label for="${problem.id}-notes" class="block text-sm font-medium text-gray-700">Write your findings here. Use vivid and shocking language.</label>
+                                    <textarea id="${problem.id}-notes" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" rows="6" placeholder="Identify the problem, describe it with vivid language, and then list at least three key pieces of information from the reading.">${studentData[problem.id] || ''}</textarea>
+                                    <button class="save-btn mt-2 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500" data-problem-id="${problem.id}">Save Notes</button>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    mainContent.appendChild(siteElement);
+                });
+            }
+
+            function renderVocabulary() {
+                reportView.style.display = 'none';
+                fieldSitesView.style.display = 'none';
+                vocabularyView.style.display = 'block';
+
+                let html = '<div class="p-6 rounded-lg shadow-lg bg-white">';
+                html += '<h2 class="text-2xl font-bold mb-4 text-gray-800">Key Vocabulary</h2>';
+                Object.keys(vocabulary).forEach(term => {
+                    html += `
+                        <div class="mb-4">
+                            <h3 class="text-xl font-semibold text-indigo-700">${term}</h3>
+                            <p class="text-gray-700">${vocabulary[term]}</p>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                vocabularyView.innerHTML = html;
+            }
+
+            function renderReportForm() {
+                fieldSitesView.style.display = 'none';
+                vocabularyView.style.display = 'none';
+                reportView.style.display = 'block';
+
+                updateReportForm();
+            }
+
+            function updateReportForm() {
+                const problemsContainer = document.getElementById('report-problems-container');
+                problemsContainer.innerHTML = '';
+                
+                Object.keys(studentData).forEach(problemId => {
+                    const allProblems = Object.values(fieldSites).flatMap(site => site.problems);
+                    const problem = allProblems.find(p => p.id === problemId);
+                    if (problem) {
+                        const problemSection = document.createElement('div');
+                        problemSection.className = 'border-t pt-4 mt-4';
+                        problemSection.innerHTML = `
+                            <h4 class="text-lg font-bold mb-2 text-gray-800">${problem.title}</h4>
+                            <textarea name="report-paragraph-${problem.id}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" rows="6" placeholder="Write your newspaper paragraph here, using vivid language and at least three pieces of information from your notes.">${studentData[problem.id]}</textarea>
+                        `;
+                        problemsContainer.appendChild(problemSection);
+                    }
+                });
+            }
+            
+            document.getElementById('field-sites-btn').addEventListener('click', renderFieldSites);
+            document.getElementById('vocabulary-btn').addEventListener('click', renderVocabulary);
+            document.getElementById('processing-btn').addEventListener('click', renderReportForm);
+            
+            mainContent.addEventListener('click', (e) => {
+                if (e.target.classList.contains('save-btn')) {
+                    const problemId = e.target.dataset.problemId;
+                    const notes = document.getElementById(`${problemId}-notes`).value;
+                    studentData[problemId] = notes;
+                    saveNotes();
+                }
+            });
+
+            processingForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const title = document.getElementById('report-title').value;
+                const byline = document.getElementById('report-byline').value;
+                const intro = document.getElementById('report-intro').value;
+                const conclusion = document.getElementById('report-conclusion').value;
+
+                let reportContent = `
+                    <div class="font-serif max-w-4xl mx-auto p-8 bg-white border border-gray-300 shadow-lg">
+                        <h1 class="text-4xl font-bold text-center mb-2">${title}</h1>
+                        <p class="text-center text-sm text-gray-600 mb-6">By ${byline} | ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                        <div class="border-t-2 border-b-2 border-gray-900 py-4 mb-6 text-gray-800">
+                            <h2 class="text-2xl font-bold mb-2">Exposing the Gilded Age</h2>
+                            <p>${intro}</p>
+                        </div>
+                        <div class="space-y-8 text-gray-800">
+                            ${Object.keys(studentData).map(problemId => {
+                                const paragraph = document.querySelector(`textarea[name="report-paragraph-${problemId}"]`).value;
+                                return `
+                                    <div>
+                                        <h3 class="text-xl font-bold mb-2">${fieldSites[Object.keys(fieldSites).find(siteKey => fieldSites[siteKey].problems.some(p => p.id === problemId))].problems.find(p => p.id === problemId).title}</h3>
+                                        <p class="mb-4">${paragraph}</p>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                        <div class="mt-8 border-t-2 border-gray-900 pt-4 text-gray-800">
+                            <h2 class="text-2xl font-bold mb-2">A Call to Action</h2>
+                            <p>${conclusion}</p>
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('generated-report-container').innerHTML = reportContent;
+            });
+            
+            // Initial view
+            renderFieldSites();
+        });
+    </script>
+</head>
+
+<body class="bg-gray-100 font-sans text-gray-800">
+    <div class="container mx-auto p-4">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl md:text-5xl font-extrabold text-gray-900 tracking-tight">Muckraker Field Reporting</h1>
+            <p class="mt-2 text-lg text-gray-600">Uncovering Problems at the Turn of the Century</p>
+            <div id="user-id-display" class="mt-4 text-xs font-mono bg-gray-200 p-2 rounded-md">Connecting...</div>
+        </header>
+
+        <nav id="site-nav" class="flex flex-wrap justify-center space-x-2 md:space-x-4 mb-8">
+            <button id="field-sites-btn" class="px-4 py-2 text-sm md:text-base font-medium text-white bg-indigo-600 rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out">Field Sites</button>
+            <button id="vocabulary-btn" class="px-4 py-2 text-sm md:text-base font-medium text-indigo-600 bg-white border border-indigo-600 rounded-md shadow-sm hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out">Vocabulary</button>
+            <button id="processing-btn" class="px-4 py-2 text-sm md:text-base font-medium text-indigo-600 bg-white border border-indigo-600 rounded-md shadow-sm hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out">Write Report</button>
+        </nav>
+
+        <main id="main-content" class="bg-white p-6 rounded-lg shadow-lg min-h-screen">
+            <!-- Content will be injected here -->
+        </main>
+
+        <div id="field-sites-view" class="hidden">
+            <!-- Field site content will be rendered here by JS -->
+        </div>
+
+        <div id="vocabulary-view" class="hidden">
+            <!-- Vocabulary content will be rendered here by JS -->
+        </div>
+        
+        <div id="report-view" class="hidden">
+            <div class="p-6 rounded-lg shadow-lg bg-white">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800">Write Your Newspaper Report</h2>
+                <form id="processing-form" class="space-y-6">
+                    <div>
+                        <label for="report-title" class="block text-sm font-medium text-gray-700">Newspaper Title</label>
+                        <input type="text" id="report-title" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" required>
+                    </div>
+                    <div>
+                        <label for="report-byline" class="block text-sm font-medium text-gray-700">Your Name (Byline)</label>
+                        <input type="text" id="report-byline" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" required>
+                    </div>
+                    <div>
+                        <label for="report-intro" class="block text-sm font-medium text-gray-700">Introduction (Explain muckraking and your report)</label>
+                        <textarea id="report-intro" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" rows="4" required></textarea>
+                    </div>
+                    <div id="report-problems-container">
+                        <!-- Problem paragraphs will be dynamically added here -->
+                    </div>
+                    <div>
+                        <label for="report-conclusion" class="block text-sm font-medium text-gray-700">Conclusion (Your call to action)</label>
+                        <textarea id="report-conclusion" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" rows="4" required></textarea>
+                    </div>
+                    <button type="submit" class="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150 ease-in-out">Generate Newspaper Report</button>
+                </form>
+            </div>
+            <div id="generated-report-container" class="mt-8">
+                <!-- Final report will be displayed here -->
+            </div>
+        </div>
+    </div>
+</body>
+</html>
